@@ -1,9 +1,10 @@
-from scipy.signal import find_peaks_cwt
+from scipy.signal import find_peaks_cwt, find_peaks
 from matplotlib import pyplot as plt
 from scipy.special import eval_legendre
+from scipy.special import roots_legendre
+from scipy.special import legendre
 
 import numpy as np 
-import heapq
 
 def cross_sections(angle, theta_arr, ke_arr, sigma_arr, dsigma_arr, e_offset):
     angle_mask = theta_arr == angle
@@ -71,7 +72,7 @@ def get_interpolation(ke_arr, sigma_arr, gap_size = 0.1):
         else:
             #want the spacing to be approximately the resolution of the data 
 
-            spacing = np.mean(np.diff(ke_parts[i])) 
+            spacing = np.median(np.diff(ke_parts[i])) 
             ke_interp = np.arange(
                         ke_parts[i][0],
                         ke_parts[i][-1] + spacing/5,
@@ -100,30 +101,78 @@ def get_interpolation(ke_arr, sigma_arr, gap_size = 0.1):
     return interp_parts, ke_stitched, sigma_stitched
 
 
-def get_peaks(interp_parts):
+
+
+def get_peaks_lm(interp_parts):
+    peak_energies_all = []
+    peak_heights_all = []
+
+    for ke_part, sigma_part in interp_parts:
+        """peak_index = find_peaks_cwt(
+            sigma_part,
+            widths = np.arange(1,50),
+            min_length = 3,
+            min_snr = 1
+        )"""
+        peak_index, _ = find_peaks(
+            sigma_part,
+            prominence = 0.005
+        )
+        peak_index = np.unique(peak_index) #sometimes cwt gives the exact same index, yielding np.diff to have zeroes
+        peak_energies_all.append(ke_part[peak_index])
+        peak_heights_all.append(sigma_part[peak_index])
+    return np.concatenate(peak_energies_all), np.concatenate(peak_heights_all)
+
+def visualise_peaks_lm(interp_peaks, angle):
+    plt.figure(figsize=(15, 6))
+    for ke_part, sigma_part in interp_peaks:
+
+        peak_index, _ = find_peaks(
+            sigma_part,
+            prominence = 0.005
+        )
+
+        plt.plot(ke_part, sigma_part)
+
+        plt.scatter(
+            ke_part[peak_index],
+            sigma_part[peak_index],
+            marker="x",
+            s=60
+        )
+
+    plt.xlabel("Energy")
+    plt.ylabel(r"Cross section ({}$^\circ$)".format(angle))
+    plt.show()
+
+
+def get_peaks_cwt(interp_parts):
     peak_energies_all = []
     peak_heights_all = []
 
     for ke_part, sigma_part in interp_parts:
         peak_index = find_peaks_cwt(
             sigma_part,
-            widths = np.arange(1, 50),
+            widths = np.arange(1,50),
             min_length = 3,
             min_snr = 1
         )
+
+        peak_index = np.unique(peak_index) #sometimes cwt gives the exact same index, yielding np.diff to have zeroes
         peak_energies_all.append(ke_part[peak_index])
         peak_heights_all.append(sigma_part[peak_index])
     return np.concatenate(peak_energies_all), np.concatenate(peak_heights_all)
 
-def visualise_peaks(interp_peaks, angle):
+def visualise_peaks_cwt(interp_peaks, angle):
+    plt.figure(figsize=(15, 6))
     for ke_part, sigma_part in interp_peaks:
 
         peak_index = find_peaks_cwt(
             sigma_part,
-            np.arange(1, 50),
-            min_length=3,
-            min_snr=1
-    )
+            widths = np.arange(1,50),
+            min_length = 3,
+            min_snr = 1
+        )
 
         plt.plot(ke_part, sigma_part)
 
@@ -138,8 +187,9 @@ def visualise_peaks(interp_peaks, angle):
     plt.ylabel(r"Cross section ({}$^\circ$)".format(angle))
     plt.show()
     
+    
 
-def get_all_peaks(cross_sections):
+def get_all_peaks(cross_sections, lm=True):
     angle_peaks = {}
 
     for angle in cross_sections.keys():
@@ -148,25 +198,30 @@ def get_all_peaks(cross_sections):
             cross_sections[angle]["ke"],
             cross_sections[angle]["sigma"]
         )
+        if lm == True:
 
-        peak_energies, peak_heights = get_peaks(interp_parts)
+            peak_energies, peak_heights = get_peaks_lm(interp_parts)
+        else:
+            peak_energies, peak_heights = get_peaks_cwt(interp_parts)
 
         angle_peaks[angle] = {
             "energy": peak_energies,
             "height": peak_heights
         }
         
-
     return angle_peaks
 
-def visualise_all_peaks(cross_sections):
+def visualise_all_peaks(cross_sections, lm=True):
     for angle in cross_sections.keys():
         #print(angle)
         interp_parts, _, _ = get_interpolation(
             cross_sections[angle]["ke"],
             cross_sections[angle]["sigma"]
         )
-        visualise_peaks(interp_parts, angle)
+        if lm == True:
+            visualise_peaks_lm(interp_parts, angle)
+        else:
+            visualise_peaks_cwt(interp_parts, angle)
 
 # each energy starts as its own cluster
 # compute distances between clusters
@@ -184,8 +239,10 @@ def get_threshold(all_peaks):
         if len(energies) > 1:
             spacings = np.diff(energies)
             min_dist_per_angle.append(np.min(spacings))
+            #print(min_dist_per_angle)
 
     median_min_dist = np.median(min_dist_per_angle)
+    #print(median_min_dist)
     return median_min_dist
 
 def get_distance_matrix(clusters, threshold):
@@ -201,10 +258,15 @@ def get_distance_matrix(clusters, threshold):
             angles_i = {angle for _, angle, _ in clusters[i][1]}
             angles_j = {angle for _, angle, _ in clusters[j][1]}
 
-            disjoint = angles_i.isdisjoint(angles_j)
-            distance = abs(clusters[i][0] - clusters[j][0])
+            all = clusters[i][1] + clusters[j][1]
+            energies = [energy for energy, _, _ in all]
+            spread = np.max(energies) - np.min(energies)
+            
 
-            if disjoint and distance < threshold:
+            disjoint = angles_i.isdisjoint(angles_j)
+            #distance = abs(clusters[i][0] - clusters[j][0])
+
+            if disjoint and spread < threshold:
                 distance_matrix[i, j] = abs(
                     clusters[i][0] - clusters[j][0]
                 )
@@ -226,8 +288,18 @@ def merge_clusters(index_1, index_2, clusters):
 
     all_clusters = cluster_1[1] + cluster_2[1]
 
-    energy_representative = np.mean([energy for energy, _ , _ in all_clusters])
+    energies = np.array([
+        energy for energy, _, _ in all_clusters
+    ])
 
+    heights = np.array([
+        height for _, _, height in all_clusters
+    ])
+
+    energy_representative = np.average(
+        energies,
+        weights=heights
+    )
     new_cluster = [energy_representative, all_clusters]
 
     for index in sorted([index_1, index_2], reverse=True):
@@ -237,7 +309,7 @@ def merge_clusters(index_1, index_2, clusters):
 
     return clusters
 
-def get_clusters(all_peaks, min_cluster_items):
+def get_clusters(all_peaks):
      #each cluster in clusters come in the form of [representative, [(energy, angle)]]
     threshold = get_threshold(all_peaks)
     clusters = []
@@ -263,33 +335,74 @@ def get_clusters(all_peaks, min_cluster_items):
 
         clusters = merge_clusters(c1, c2, clusters)
 
+    return clusters
+
+def clusters_remove_noise(clusters, min_cluster_items):
     final_clusters = [cluster for cluster in clusters 
-                      if len(cluster[1]) >= min_cluster_items]
+                          if len(cluster[1]) >= min_cluster_items]
     return final_clusters
 
 
-def plot_clusters(clusters):
+def plot_clusters(clusters, trial_l):
 
     for cluster in clusters:
         representative_energy = cluster[0]
 
         members = cluster[1]
 
-        angles = [angle for _, angle, _ in members]
+        angles = [float(angle) for _, angle, _ in members]
+        cos_theta = np.cos(np.radians(angles))
+        
         heights = np.array([height for _, _, height in members])
+        heights = heights/np.max(heights)
 
-        sizes = 150 * heights / np.max(heights)
+        if trial_l != 0:
+
+            zeroes, _ = roots_legendre(trial_l)
+
+            p = legendre(trial_l)**2
+            dp = p.deriv(1)   
+            ddp = p.deriv(2)
+
+            stationary = dp.roots
+            #print(stationary)
+            local_maxima = stationary[ddp(stationary) < 0]
+            #print(ddp(stationary))
+
+            #green: zeroes
+            #red: maximas
+        
+            for zero in zeroes:
+                plt.axvline(zero, linestyle='--', color = 'green')
+
+            for maximum in local_maxima:
+                plt.axvline(maximum, linestyle='--', color = 'red')
+
+            plt.axvline(-1, linestyle='--', color = 'red')
+            plt.axvline(1, linestyle='--', color = 'red')
 
         plt.scatter(
-            [representative_energy] * len(angles),
-            angles,
-            s=sizes,
-            alpha=0.7
+                cos_theta, 
+                heights, 
+                s=100,
+                marker='x',
         )
 
-    plt.xlabel("Representative energy")
-    plt.ylabel("Angle (degrees)")
-    plt.show()
+        #x = np.linspace(-1,1,500)
+
+        #legendre_polynomial = eval_legendre(trial_l, x)**2
+        #legendre_polynomial = legendre_polynomial/np.max(legendre_polynomial)
+
+        """plt.plot(
+            x,
+            legendre_polynomial,
+        )"""
+
+        plt.xlabel(r"$\cos\theta$")
+        plt.ylabel("Normalised peak height")
+        plt.title(r"{}".format(representative_energy))
+        plt.legend()
+        plt.show()
 
 
 #compare the innerproducts of heights of peaks to the lengendre polnomials squared 
@@ -322,12 +435,6 @@ def get_angular_momentum(cluster, trial_lst):
         all_scores.sort(
             key = lambda score: score[1]
         )
-
-        """top_3 = heapq.nlargest(
-            3, 
-            all_scores, 
-            key = lambda score: score[1]
-        )"""
     
     return all_scores, all_scores[:5]
 
