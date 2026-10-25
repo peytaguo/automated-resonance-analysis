@@ -542,3 +542,102 @@ def get_all_angular_momentum(clusters, trial_lst):
         predictions.append((float(round(cluster[0], 5)), max))
 
     return predictions
+
+################# completely different clustering approach
+
+def cost_function(cluster, repeat_angle_p, new_cluster_p):
+
+    cluster = np.array(cluster)
+    cluster_energies = cluster[::,1]
+    mean_energy = np.mean(cluster_energies)
+    spread_cost = np.sum((cluster_energies - mean_energy)**2)
+
+    cluster_angles = cluster[::,0]
+    n_unique_angles = len(np.unique_counts(cluster_angles))
+    repeating_angles = len(cluster_angles) - n_unique_angles 
+
+    repeating_angle_cost = repeat_angle_p * repeating_angles
+
+    total_cost = spread_cost + repeating_angle_cost + new_cluster_p
+
+    return total_cost
+
+def get_clusters_dp(cross_sections, repeat_angle_p, new_cluster_p):
+
+    all_peaks_flattened = []
+ 
+    all_peaks_lst = get_all_peaks_lst(
+         cross_sections
+     )
+ 
+    for angle_lst in all_peaks_lst:
+         for i in range(len(angle_lst[1])):
+             all_peaks_flattened += [
+             [angle_lst[0], angle_lst[1][i], angle_lst[2][i]]
+         ]
+ 
+    all_peaks_sorted = sorted(
+         all_peaks_flattened, 
+         key = lambda peak : peak[1]
+     )   
+
+    index = [0 for i in range(len(all_peaks_sorted)+1)]
+
+    costs = [np.inf for i in range(len(all_peaks_sorted)+1)]
+    costs[0] = 0
+
+    for i in range(1, len(all_peaks_sorted) + 1):
+
+        for j in range(i):
+
+            last_cluster = all_peaks_sorted[j:i]
+
+            last_cluster_cost = cost_function(
+                last_cluster,
+                repeat_angle_p,
+                new_cluster_p
+            )
+
+            total_cost = costs[j] + last_cluster_cost
+
+            if total_cost < costs[i]:
+                costs[i] = total_cost
+                index[i] = j
+
+    clusters = []
+    i = len(all_peaks_sorted)
+    while i != 0:
+        l_cluster_start_index = index[i]
+        last_cluster = all_peaks_sorted[l_cluster_start_index:i]
+        rep_energy = np.mean(np.array(last_cluster)[::,1])
+        i = l_cluster_start_index
+        clusters.append([rep_energy, last_cluster])
+
+    clusters.reverse()
+    return clusters
+    
+    
+def get_dp_clusters_info(clusters):
+    number_of_clusters = len(clusters)
+    length_of_clusters = np.array([
+        len(cluster[-1]) for cluster in clusters
+    ])
+    cluster_sizes, how_many = np.unique(
+        length_of_clusters,
+        return_counts = True
+    )
+
+    print("number of clusters: {}".format(number_of_clusters))
+    #cluster_sizes.tolist()
+    #how_many.tolist()
+    for cluster_size, n in zip(cluster_sizes, how_many):
+        print("{} clusters of size {}".format(n, cluster_size))
+    
+    n_repeated_clusters = sum(
+    len(set(peak[0] for peak in cluster[1])) < len(cluster[1])
+    for cluster in clusters
+)
+
+    print("Clusters with repeated angles:", n_repeated_clusters)
+
+    print("===========================")
