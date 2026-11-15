@@ -496,6 +496,7 @@ def visualise_clusters(clusters, trial_l):
 
         plt.xlabel(r"$\cos\theta$")
         plt.ylabel("Peak height")
+        plt.yscale("log")
         plt.title(r"{}".format(rep_energy))
         plt.show()
 
@@ -615,7 +616,76 @@ def get_clusters_dp(cross_sections, repeat_angle_p, new_cluster_p):
 
     clusters.reverse()
     return clusters
-    
+
+#fix energy but vary angle 
+
+def get_height_at_energy(ke_arr, sigma_arr, target_energy, gap_size=0.1):
+    ke_arr = np.array(ke_arr)
+    sigma_arr = np.array(sigma_arr)
+
+
+    splits = np.where(np.diff(ke_arr) > gap_size)[0] + 1
+
+    ke_parts = np.split(ke_arr, splits)
+    sigma_parts = np.split(sigma_arr, splits)
+
+    for ke, sigma in zip(ke_parts, sigma_parts):
+        if len(ke) >= 2 and ke[0] <= target_energy <= ke[-1]:
+            return np.interp(target_energy, ke, sigma)
+
+    return np.nan
+        
+def get_all_height(all_cs, target_energy):
+    height_across_angle = []
+    for angle in all_cs.keys():
+        ke_arr = all_cs[angle]['ke']
+        sigma_arr = all_cs[angle]['sigma']
+
+        height_across_angle.append(
+            [float(angle), get_height_at_energy(ke_arr, sigma_arr, target_energy)]
+        )
+    return height_across_angle
+
+def visualise_height_fix_energy(all_cs, target_energies):
+    for target_energy in target_energies:
+        heights_lst = np.array(get_all_height(all_cs, target_energy))
+        angles = heights_lst[::,0]
+        heights = heights_lst[::,-1]
+
+        plt.figure(figsize=(15, 6))
+        plt.scatter(angles, heights)
+
+        plt.xlabel("angle")
+        plt.ylabel("cross section")
+        plt.title(target_energy)
+        plt.yscale("log")
+    plt.show()
+
+"""
+plt.figure(figsize=(15, 6))
+    for ke_part, sigma_part in interp_peaks:
+
+        peak_index, _ = find_peaks(
+            sigma_part,
+            prominence = 0.005
+        )
+
+        plt.plot(ke_part, sigma_part)
+
+        plt.scatter(
+            ke_part[peak_index],
+            sigma_part[peak_index],
+            marker="x",
+            s=60
+        )
+
+    plt.xlabel("Energy")
+    plt.ylabel(r"Cross section ({}$^\circ$)".format(angle))
+    plt.yscale("log")
+    plt.show()
+"""
+
+
     
 def get_dp_clusters_info(clusters):
     number_of_clusters = len(clusters)
