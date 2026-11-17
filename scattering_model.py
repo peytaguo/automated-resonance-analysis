@@ -21,10 +21,9 @@ def wavenumber(energy):
 def phase(energy, a, b):
     return a * energy + b
 
-def resonant_phase_shift(width, energy, resonance_energy):
-    return np.arctan(
-        (width/2) / (resonance_energy - energy)
-    )
+#e^2ibeta - 1
+def resonance_phase_factor(width, energy, resonance_energy):
+    return ( width * 1j ) / (resonance_energy - energy - 1j * width/2)
 
 """
 resonance disctionary:
@@ -43,13 +42,12 @@ def resonance_contribution(
         b
     ):
     return (2*angular_m+1) * p_width_ratio * ( 
-        np.exp( 2j * resonant_phase_shift(width, energy, resonance_energy)) - 1
-    ) * (
+        resonance_phase_factor(width, energy, resonance_energy)) * (
         np.exp(2j * phase(energy, a, b))
         ) * eval_legendre(angular_m, np.cos(theta))
 
 
-def scattering_model(
+def model(
         theta, 
         energy,
         resonances,
