@@ -660,32 +660,6 @@ def visualise_height_fix_energy(all_cs, target_energies):
         plt.title(target_energy)
         plt.yscale("log")
     plt.show()
-
-"""
-plt.figure(figsize=(15, 6))
-    for ke_part, sigma_part in interp_peaks:
-
-        peak_index, _ = find_peaks(
-            sigma_part,
-            prominence = 0.005
-        )
-
-        plt.plot(ke_part, sigma_part)
-
-        plt.scatter(
-            ke_part[peak_index],
-            sigma_part[peak_index],
-            marker="x",
-            s=60
-        )
-
-    plt.xlabel("Energy")
-    plt.ylabel(r"Cross section ({}$^\circ$)".format(angle))
-    plt.yscale("log")
-    plt.show()
-"""
-
-
     
 def get_dp_clusters_info(clusters):
     number_of_clusters = len(clusters)
