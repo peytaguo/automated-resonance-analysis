@@ -41,6 +41,7 @@ def resonance_contribution(
         a, 
         b
     ):
+    theta = np.deg2rad(theta)
     return (2*angular_m+1) * p_width_ratio * ( 
         resonance_phase_factor(width, energy, resonance_energy)) * (
         np.exp(2j * phase(energy, a, b))
@@ -72,3 +73,29 @@ def model(
     s_amplitude =  background( energy, m, c) + (1j / (2 * wavenumber( energy ))) * total_resonance_contribution
 
     return np.abs(s_amplitude) ** 2
+
+def get_window_cs(all_cs, E_min, E_max):
+    window_all_angles = {}
+
+    for angle, data in all_cs.items():
+        ke = data['ke']
+        sigma = data['sigma']
+        mask = (ke >= E_min) & (ke <= E_max)
+
+        ke_window = ke[mask]
+        sigma_window = sigma[mask]
+
+        window_all_angles[angle] = {
+            "ke": ke_window,
+            "sigma": sigma_window
+        }
+    return window_all_angles 
+
+
+# energy, width, g, a, b <- per resonance 
+# m, c per angle 
+def parameters_to_dictionary():
+    pass 
+
+def get_residual(parameters, angular_momenta, window):
+    pass
