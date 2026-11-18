@@ -70,7 +70,7 @@ def model(
             resonance["b"]
         )
 
-    s_amplitude =  background( energy, m, c) + (1j / (2 * wavenumber( energy ))) * total_resonance_contribution
+    s_amplitude =  background(energy, m, c) + (1j / (2 * wavenumber( energy ))) * total_resonance_contribution
 
     return np.abs(s_amplitude) ** 2
 
@@ -91,11 +91,59 @@ def get_window_cs(all_cs, E_min, E_max):
         }
     return window_all_angles 
 
+#resonance.keys() => angular_m, p_width_ratio, width, resonance_energy, a, b
 
-# energy, width, g, a, b <- per resonance 
-# m, c per angle 
-def parameters_to_dictionary():
-    pass 
+# energy, width, g, a, b <- per resonance  5 continuous parameters per resonance 
+# m, c per angle - 2*16 = 32 background parameters 
+
+"""
+Order of parameters:
+resonance energy, total width, width ratio, a, b
+"""
+
+def parameters_to_dictionary(parameters, angular_momenta):
+    resonance_param_lst = []
+
+    background_parameters = parameters[-32:]
+    resonances_parameters = parameters[:-32]
+
+    angular_index = 0
+    current_index = 5 
+    while current_index <= len(resonances_parameters):
+        extract_from = resonances_parameters[:current_index]
+        resonance = {
+            "angular m": angular_momenta[angular_index],
+            "p width ratio": extract_from[-3],
+            "width": extract_from[-4],
+            "r energy": extract_from[-5],
+            "a": extract_from[-2],
+            "b": extract_from[-1] 
+        }
+
+        resonance_param_lst.append(resonance)
+        current_index += 5
+        angular_index += 1
+
+    return resonance_param_lst, background_parameters.reshape(16, 2)
+    
 
 def get_residual(parameters, angular_momenta, window):
-    pass
+    residuals = []
+
+    resonance_param_lst, background_parameters = parameters_to_dictionary(parameters, angular_momenta)
+
+    for (angle, data), (m,c) in zip(window.items(), background_parameters):
+        model_pred = model(
+            angle,
+            data['ke'],
+            resonance_param_lst,
+            m,
+            c
+        )
+
+        residual = data['sigma'] - model_pred
+        residuals.append(residual)
+
+    residuals = np.concatenate(residuals)
+
+    return residuals 
