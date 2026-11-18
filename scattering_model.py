@@ -5,6 +5,7 @@ from scipy.special import eval_legendre
 from scipy.optimize import least_squares
 from scipy.constants import physical_constants, hbar, electron_volt, c 
 
+
 MU_C2 = (4*20)/(4+20) * physical_constants[
     "atomic mass constant energy equivalent in MeV"
 ][0] 
@@ -147,3 +148,39 @@ def get_residual(parameters, angular_momenta, window):
     residuals = np.concatenate(residuals)
 
     return residuals 
+
+
+"""
+Order of parameters:
+resonance energy, total width, width ratio, a, b
+"""
+
+random_initial = np.random.default_rng(1)
+
+def get_initial_parameters(
+        cluster_energies, 
+        r_widths,
+        E_min, 
+        E_max):
+
+    initial_parameters = []
+
+    cluster_energies = np.array(cluster_energies)
+    r_widths = np.array(r_widths)
+
+    mask = (cluster_energies >= E_min) & (cluster_energies <= E_max)
+
+    energies_in_window = cluster_energies[mask]
+    r_widths_in_window = r_widths[mask]
+
+    for (energy, width) in zip(energies_in_window, r_widths_in_window):
+        initial_parameters += [
+            energy,
+            width, 
+            random_initial.uniform(0.1, 0.9), #width ratio
+            random_initial.uniform(-1, 1), #a
+            random_initial.uniform(0, 2*np.pi)] #b
+
+    initial_parameters += [random_initial.uniform(-1, 1) for i in range(32)]
+
+    return initial_parameters
