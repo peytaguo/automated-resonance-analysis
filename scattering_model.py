@@ -5,6 +5,8 @@ from scipy.special import eval_legendre
 from scipy.optimize import least_squares
 from scipy.constants import physical_constants, hbar, electron_volt, c 
 
+from sklearn.cluster import AgglomerativeClustering
+
 
 MU_C2 = (4*20)/(4+20) * physical_constants[
     "atomic mass constant energy equivalent in MeV"
@@ -91,7 +93,9 @@ def get_window_cs(all_cs, E_min, E_max):
         window_all_angles[angle] = {
             "ke": ke_window,
             "sigma": sigma_window,
-            "dsigma": dsigma_window
+            "dsigma": dsigma_window,
+            "E_min": E_min,
+            "E_max": E_max
         }
     return window_all_angles 
 
@@ -289,3 +293,44 @@ def get_fit_visual(window, params, angular_momenta):
 
 
     plt.show()
+
+
+def get_window_clusters(cluster_energies):
+    cluster_energies = np.array(cluster_energies).reshape(-1,1) #features along a row. 
+    
+    clustering = AgglomerativeClustering(
+        n_clusters = None,
+        distance_threshold=0.04,
+        linkage = "single"
+    )
+
+    outcome = clustering.fit_predict(cluster_energies)
+
+    clusters = [
+        np.sort(cluster_energies[outcome == label])
+        for label in outcome
+    ]
+
+    return clusters
+
+
+"""
+window_all_angles[angle] = {
+            "ke": ke_window,
+            "sigma": sigma_window,
+            "dsigma": dsigma_window,
+            "E_min": E_min,
+            "E_max": E_max
+        }
+"""
+
+def get_windows(all_cs, clusters, margin=0.04):
+    windows = []
+    for cluster in clusters:
+        E_min = min(cluster) - 0.04
+        E_max  = max(cluster) + 0.04
+        windows.append(get_window_cs(all_cs, E_min, E_max))
+
+    return windows
+
+    
