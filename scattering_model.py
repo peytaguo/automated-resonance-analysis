@@ -42,7 +42,7 @@ def resonance_contribution(
         a, 
         b
     ):
-    theta = np.deg2rad(float(theta))
+    theta = np.deg2rad(theta)
     return (2*angular_m+1) * p_width_ratio * ( 
         resonance_phase_factor(width, energy, resonance_energy)) * (
         np.exp(2j * phase(energy, a, b))
@@ -81,17 +81,14 @@ def get_window_cs(all_cs, E_min, E_max):
     for angle, data in all_cs.items():
         ke = data['ke']
         sigma = data['sigma']
-        dsigma = data['dsigma']
         mask = (ke >= E_min) & (ke <= E_max)
 
         ke_window = ke[mask]
         sigma_window = sigma[mask]
-        dsigma_window = dsigma[mask]
 
         window_all_angles[angle] = {
             "ke": ke_window,
-            "sigma": sigma_window,
-            "dsigma": dsigma_window
+            "sigma": sigma_window
         }
     return window_all_angles 
 
@@ -108,8 +105,8 @@ resonance energy, total width, width ratio, a, b
 def parameters_to_dictionary(parameters, angular_momenta):
     resonance_param_lst = []
 
-    background_parameters = np.array(parameters[-32:])
-    resonances_parameters = np.array(parameters[:-32])
+    background_parameters = parameters[-32:]
+    resonances_parameters = parameters[:-32]
 
     angular_index = 0
     current_index = 5 
@@ -146,12 +143,7 @@ def get_residual(parameters, angular_momenta, window):
         )
 
         residual = data['sigma'] - model_pred
-
-        mean_square_error = np.mean(residual ** 2)
-
-        weighted_residual = np.sqrt(mean_square_error) * residual / np.sqrt(len(residual))
-        
-        residuals.append(weighted_residual) 
+        residuals.append(residual)
 
     residuals = np.concatenate(residuals)
 
@@ -192,100 +184,3 @@ def get_initial_parameters(
     initial_parameters += [random_initial.uniform(-1, 1) for i in range(32)]
 
     return initial_parameters
-
-
-# implement physical bounds on parameters
-# E_min < resonance_energy < E_max 
-# 0 < total width < E_max - E_min
-# 0 < width ratio < 1
-# -1 < a < 1 ??
-# 0 < b < 2pi 
-
-def get_bounds(E_min, E_max, cluster_energies):
-    cluster_energies = np.array(cluster_energies)
-    mask =  mask = (cluster_energies >= E_min) & (cluster_energies <= E_max)
-    energy_window = cluster_energies[mask]
-    
-
-    upper_bound = []
-    lower_bound = []
-
-    background_lower_bounds = [-np.inf, -np.inf]*16
-    background_upper_bounds = [np.inf, np.inf]*16
-
-
-    r_upper_bound = [
-        E_max, #resonance energy 
-        1, #total width
-        1, #width ratio
-        1, 
-        2*np.pi
-    ]
-
-    r_lower_bound = [
-        E_min,
-        0,
-        0,
-        -1,
-        0
-    ]
-
-    for _ in energy_window:
-        upper_bound += r_upper_bound
-        lower_bound += r_lower_bound
-
-    upper_bound += background_upper_bounds
-    lower_bound += background_lower_bounds
-
-    return lower_bound, upper_bound
-
-
-def get_fit_visual(window, params, angular_momenta):
-    fitted_resonances, fitted_backgrounds = parameters_to_dictionary(
-        params,
-        angular_momenta
-    )
-
-    for i, resonance in enumerate(fitted_resonances, start=1):
-        print(
-            f"Resonance {i}: "
-            f"E_r = {resonance['r energy']:.6f} MeV, "
-            f"l = {resonance['angular m']}, "
-            f"Gamma = {resonance['width']:.6f} MeV"
-    )
-
-    fig, axes = plt.subplots(4, 4, figsize=(16, 12))
-
-    for i, (ax, angle) in enumerate(zip(axes.flat, window.keys())):
-        m, c = fitted_backgrounds[i]
-
-        ke = window[angle]["ke"]
-        ke_fit = np.linspace(ke.min(), ke.max(), 1000)
-
-        sigma_fit = model(
-            float(angle),
-            ke_fit,
-            fitted_resonances,
-            m,
-            c
-        )
-
-        ax.errorbar(
-            ke,
-            window[angle]["sigma"],
-            yerr = window[angle]["dsigma"],
-            fmt = "o",
-            markersize=3,
-            capsize=3,
-            elinewidth=1,
-            color="blue",
-            label="Experimental"
-        )
-        ax.plot(ke_fit, sigma_fit, color="red")
-
-        ax.set_title(f"{angle}°")
-        ax.set_xlabel("Energy (MeV)")
-        ax.set_ylabel("Cross section")
-
-
-    plt.show()
