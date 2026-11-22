@@ -7,7 +7,7 @@ from scipy.special import legendre
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import linkage, fcluster
 
-from sklearn.cluster import HDBSCAN
+#from sklearn.cluster import HDBSCAN
 
 import numpy as np 
 
