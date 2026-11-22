@@ -1,3 +1,5 @@
+from itertools import product
+
 import scattering_model
 
 import numpy as np
@@ -103,7 +105,7 @@ def hann_weights(energy, E_min, E_max, edge_weight=0.5):
     return edge_weight + (1 - edge_weight) * np.sin(np.pi*x)**2
 
 
-def de_fitting_routine(window, cluster_energies, angular_momenta, m_cap, c_cap, maxiter=40):
+def de_fitting_routine(window, cluster_energies, angular_momenta, m_cap, c_cap, popsize = 100, maxiter=40):
     angle = list(window.keys())[0]
     E_min = float(window[angle]["E_min"])
     E_max = float(window[angle]["E_max"])
@@ -127,7 +129,7 @@ def de_fitting_routine(window, cluster_energies, angular_momenta, m_cap, c_cap, 
         args = (angular_momenta, window),
         strategy = "best1bin",
         maxiter = maxiter,
-        popsize = 100,
+        popsize = popsize,
         mutation = (0.5, 1),
         recombination = 0.7,
         polish = False,
@@ -141,6 +143,14 @@ def get_de_fit_visual(window, parameters, angular_momenta):
     r_params, background = scattering_model.parameters_to_dictionary(
         parameters, angular_momenta
     ) 
+
+    for i, resonance in enumerate(r_params, start=1):
+        print(
+            f"Resonance {i}: "
+            f"E_r = {resonance['r energy']:.6f} MeV, "
+            f"l = {resonance['angular m']}, "
+            f"Gamma = {resonance['width']:.6f} MeV"
+    )
 
     angle_1 = list(window.keys())[0]
     E_min = window[angle_1]["E_min"]
@@ -186,4 +196,52 @@ def get_de_fit_visual(window, parameters, angular_momenta):
     plt.tight_layout()
     plt.show()
 
+def de_fit_all_am(window, cluster_energies, m_cap, c_cap, popsize = 100, maxiter=40):
+    fits = []
+    angle = list(window.keys())[0]
+    E_min = float(window[angle]["E_min"])
+    E_max = float(window[angle]["E_max"])  
+
+    cluster_energies = np.array(cluster_energies)
+
+    mask = (
+        (cluster_energies >= E_min)
+        & (cluster_energies <= E_max)
+    )
+
+    window_energies = cluster_energies[mask]
+    number_of_resonances = len(window_energies)
+
+    combinations = list(product(range(6), repeat=number_of_resonances))
+    total = len(combinations)
+
+    for i, angular_momenta in enumerate(combinations, start=1):
+        fit, bound = de_fitting_routine(
+            window,
+            window_energies,
+            angular_momenta,
+            m_cap,
+            c_cap,
+            popsize = popsize,
+            maxiter = maxiter
+        )
+        fits.append((fit, bound, angular_momenta))
+
+        print(
+        f"\rProgress: {100*i/total:.1f}% "
+        f"({i}/{total})",
+        end="",
+        flush=True
+        )
+
+    fits.sort(key = lambda x: x[0].fun)
+    best_fit, best_bound, best_am = fits[0]
+
+    get_de_fit_visual(window, best_fit.x, best_am)
+
+    print("\nBest angular momenta:", best_am)
+    print("Best DE cost:", best_fit.fun)
+    print("Converged:", best_fit.success)
+
+    return best_fit, best_bound, best_am, fits
  
