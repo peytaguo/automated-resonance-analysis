@@ -5,10 +5,10 @@ from scipy.optimize import differential_evolution, least_squares
 
 from matplotlib import pyplot as plt
 
-def de_background(m, c, E_ref, energy):
-    return m * (energy - E_ref) + c
+"""def de_background(m, c, E_ref, energy):
+    return m * (energy - E_ref) + c"""
 
-def de_model(
+"""def de_model(
         theta, 
         energy,
         resonances,
@@ -29,12 +29,13 @@ def de_model(
             resonance["width"],
             resonance["r energy"],
             resonance["a"][angle],
-            resonance["b"][angle]
+            resonance["b"][angle],
+            E_ref
         )
 
     s_amplitude =  de_background(m, c, E_ref, energy) + (1j / (2 * scattering_model.wavenumber( energy ))) * total_resonance_contribution
 
-    return np.abs(s_amplitude) ** 2
+    return np.abs(s_amplitude) ** 2"""
 
 
 def get_de_residual(parameters, angular_momenta, window):
@@ -51,7 +52,7 @@ def get_de_residual(parameters, angular_momenta, window):
 
     for angle_i, ((angle, data), (m,c)) in enumerate(zip(window.items(), background_parameters)):
         assert np.all(data["dsigma"] > 0), f"Invalid uncertainty at {angle}°"
-        model_pred = de_model(
+        model_pred = scattering_model.model(
             angle,
             data['ke'],
             resonance_param_lst,
@@ -154,7 +155,7 @@ def get_de_fit_visual(window, parameters, angular_momenta):
         data = window[angle]
         ke_fit = np.linspace(data["ke"].min(), data["ke"].max(), 1000)
 
-        fit = de_model(
+        fit = scattering_model.model(
             angle,
             ke_fit, 
             r_params,

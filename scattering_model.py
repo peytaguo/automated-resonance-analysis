@@ -16,16 +16,16 @@ MU_C2 = (4*20)/(4+20) * physical_constants[
 ][0] 
 HBAR_C = HBAR_C = hbar * c / (1e6 * electron_volt * 1e-15)
 
-def background(energy, m, c):
-    return m * energy + c
+def background(energy, m, c, E_ref):
+    return m * (energy-E_ref) + c
 
 def wavenumber(energy):
     return np.sqrt(
         2 * MU_C2 * energy 
     ) / (HBAR_C)
 
-def phase(energy, a, b):
-    return a * energy + b
+def phase(energy, a, b, E_ref):
+    return a * (energy-E_ref) + b
 
 #e^2ibeta - 1
 def resonance_phase_factor(width, energy, resonance_energy):
@@ -45,12 +45,13 @@ def resonance_contribution(
         width, 
         resonance_energy, 
         a, 
-        b
+        b, 
+        E_ref
     ):
     theta = np.deg2rad(float(theta))
     return (2*angular_m+1) * p_width_ratio * ( 
         resonance_phase_factor(width, energy, resonance_energy)) * (
-        np.exp(2j * phase(energy, a, b))
+        np.exp(2j * phase(energy, a, b, E_ref))
         ) * eval_legendre(angular_m, np.cos(theta))
 
 
@@ -60,7 +61,8 @@ def model(
         resonances,
         m,
         c,
-        angle
+        angle,
+        E_ref
     ):
 
     total_resonance_contribution = 0j
@@ -74,10 +76,11 @@ def model(
             resonance["width"],
             resonance["r energy"],
             resonance["a"][angle],
-            resonance["b"][angle]
+            resonance["b"][angle],
+            E_ref
         )
 
-    s_amplitude =  background(energy, m, c) + (1j / (2 * wavenumber( energy ))) * total_resonance_contribution
+    s_amplitude =  background(energy, m, c, E_ref) + (1j / (2 * wavenumber( energy ))) * total_resonance_contribution
 
     return np.abs(s_amplitude) ** 2
 
@@ -142,6 +145,13 @@ def parameters_to_dictionary(parameters, angular_momenta):
     
 
 def get_residual(parameters, angular_momenta, window):
+
+    angle = list(window.keys())[0]
+    E_min = window[angle]["E_min"]
+    E_max = window[angle]["E_max"]
+
+    E_ref = (E_min + E_max) / 2
+
     
     residuals = []
 
@@ -155,7 +165,8 @@ def get_residual(parameters, angular_momenta, window):
             resonance_param_lst,
             m,
             c,
-            angle_i
+            angle_i,
+            E_ref
         )
 
         residual = (data["sigma"] - model_pred) / data["dsigma"]
@@ -270,6 +281,12 @@ def get_fit_visual(window, params, angular_momenta):
         angular_momenta
     )
 
+    angle = list(window.keys())[0]
+
+    E_min = window[angle]["E_min"]
+    E_max = window[angle]["E_max"]
+    E_ref = (E_min + E_max)/2
+
     for i, resonance in enumerate(fitted_resonances, start=1):
         print(
             f"Resonance {i}: "
@@ -294,7 +311,8 @@ def get_fit_visual(window, params, angular_momenta):
             fitted_resonances,
             m,
             c,
-            i
+            i,
+            E_ref
         )
 
         ax.errorbar(
