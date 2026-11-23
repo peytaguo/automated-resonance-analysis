@@ -149,7 +149,8 @@ def get_de_fit_visual(window, parameters, angular_momenta):
             f"Resonance {i}: "
             f"E_r = {resonance['r energy']:.6f} MeV, "
             f"l = {resonance['angular m']}, "
-            f"Gamma = {resonance['width']:.6f} MeV"
+            f"Gamma = {resonance['width']:.6f} MeV "
+            f"ratio = {resonance["p width ratio"]:.6f}"
     )
 
     angle_1 = list(window.keys())[0]

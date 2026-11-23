@@ -292,7 +292,8 @@ def get_fit_visual(window, params, angular_momenta):
             f"Resonance {i}: "
             f"E_r = {resonance['r energy']:.6f} MeV, "
             f"l = {resonance['angular m']}, "
-            f"Gamma = {resonance['width']:.6f} MeV"
+            f"Gamma = {resonance['width']:.6f} MeV "
+            f"ratio = {resonance["p width ratio"]:.6f}"
     )
 
     fig, axes = plt.subplots(4, 4, figsize=(16, 12))
