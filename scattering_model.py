@@ -500,4 +500,146 @@ def fitting_routine_2(fits, window, lower_bound, upper_bound):
 
     return refined_fits
 
+####################################################
+
+def get_scattering_amplitude(
+        theta, 
+        energy,
+        resonances,
+        m,
+        c,
+        angle,
+        E_ref
+    ):
+
+    total_resonance_contribution = 0j
+
+    for resonance in resonances:
+        total_resonance_contribution += resonance_contribution(
+            theta,
+            resonance["angular m"],
+            resonance["p width ratio"],
+            energy,
+            resonance["width"],
+            resonance["r energy"],
+            resonance["a"][angle],
+            resonance["b"][angle],
+            E_ref
+        )
+
+    s_amplitude =  background(energy, m, c, E_ref) + (1j / (2 * wavenumber( energy ))) * total_resonance_contribution
+
+    return s_amplitude 
+
+
+def get_dscattering_dm(window):
+    angle = list(window.keys())[0]
+    E_min = window[angle]["E_min"]
+    E_max = window[angle]["E_max"]
+
+    E_ref = (E_min + E_max)/2
+
+    partial = []
+
+    for angle in window.values():
+        for energy in angle["ke"]:
+            partial.append(
+                energy - E_ref
+            )
+
+    partial = np.array(partial)
+
+    return partial
+
+def get_conjugate_scattering_amp(window, resonances, background_params, E_ref):
+    conj_scattering_amplitude = np.array([])
+    for i, ((angle, data), (m,c)) in enumerate(zip(window.items(), background_params)):
+        scattering_amplitude = get_scattering_amplitude(
+                    angle, 
+                    data["ke"],
+                    resonances,
+                    m,
+                    c,
+                    i,
+                    E_ref
+                )
+        
+        conj_scattering_amplitude = np.append(
+            conj_scattering_amplitude, np.conjugate(scattering_amplitude)
+            )
+    
+    return conj_scattering_amplitude
+
+
+
+def get_jacobian(parameters, angular_momenta, window):
+    angle = list(window.keys())[0]
+    E_min = window[angle]["E_min"]
+    E_max = window[angle]["E_max"]
+    E_ref = (E_min + E_max)/2
+
+    resonances_params, background_params = parameters_to_dictionary(
+        parameters, angular_momenta
+    )
+
+    
+    n_parameters = len(parameters)
+    n_data = 0
+    for angle in window.values():
+        n_data += len(angle["ke"])
+
+    jacobian = np.zeros((n_data, n_parameters))
+
+    #ordering of resonances:
+    # Er, gamma, a_1, b_1, ..., a_16, b_16, 
+    # ... (if more resonances)
+    # m_1, c_1,..., m_16, c_16 
+
+    dscattering_dm = get_dscattering_dm(window)
+
+    conjugate_scattering_amp = get_conjugate_scattering_amp(
+        window, 
+        resonances_params,
+        background_params,
+        E_ref
+    )
+
+    start = 0
+
+    for i, (angle, data) in enumerate(window.items()):
+        end = start + len(data["ke"])
+
+        rows = slice(start, end)
+        m_col = n_parameters - 32 + 2*i
+        c_col = m_col + 1
+
+        partials_m = -2 * np.real(
+            conjugate_scattering_amp[rows] * dscattering_dm[rows]
+        ) / data["dsigma"]
+
+        partials_c = -2 * np.real(
+            conjugate_scattering_amp[rows]
+        ) / data["dsigma"]
+
+        jacobian[rows, m_col] = partials_m 
+        jacobian[rows, c_col] = partials_c
+
+        start = end
+
+        
+
+    return jacobian 
+
+"""
+ theta, 
+        energy,
+        resonances,
+        m,
+        c,
+        angle,
+        E_ref
+"""
+
+
+
 
