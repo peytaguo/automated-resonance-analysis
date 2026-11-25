@@ -296,7 +296,7 @@ def get_fit_visual(window, params, angular_momenta):
             f"ratio = {resonance["p width ratio"]:.6f}"
     )
 
-    fig, axes = plt.subplots(4, 4, figsize=(16, 12))
+    fig, axes = plt.subplots(4, 4, figsize=(16, 14), constrained_layout = True)
 
     for i, (ax, angle) in enumerate(zip(axes.flat, window.keys())):
         m, c = fitted_backgrounds[i]
@@ -456,7 +456,8 @@ def fitting_routine_1(window, cluster_energies, cluster_widths):
         args = (angular_momenta, window),
         bounds = (lower_bound, upper_bound),
         max_nfev = 200,
-        verbose = 1
+        verbose = 1,
+        jac = get_jacobian
     )
         fits.append((fit, angular_momenta))
 
@@ -485,7 +486,8 @@ def fitting_routine_2(fits, window, lower_bound, upper_bound):
             args=(angular_momenta, window),
             bounds=(lower_bound, upper_bound),
             max_nfev=3000,
-            verbose=1
+            verbose=1,
+            jac = get_jacobian
         )
 
         refined_fits.append(
@@ -551,6 +553,75 @@ def get_dscattering_dm(window):
 
     return partial
 
+def get_dr_dE(
+        theta,
+        window, 
+        conj_amp,
+        resonance,
+        E_ref
+):
+    angle_i = list(window.keys()).index(theta)
+
+    data = window[theta]
+    energy = data["ke"]
+
+    denominator = resonance["r energy"] - energy - 1j * resonance["width"]/2
+    resonance_amp = 1j/(2*wavenumber(energy)) * resonance_contribution (
+        theta,
+        resonance["angular m"],
+        resonance["p width ratio"],
+        energy,
+        resonance["width"],
+        resonance["r energy"],
+        resonance["a"][angle_i],
+        resonance["b"][angle_i],
+        E_ref
+    )
+
+    partial = 2 * np.real(
+        conj_amp * resonance_amp / denominator 
+    ) / data["dsigma"]
+
+    return partial
+
+def get_dr_dG(
+        theta,
+        window, 
+        conj_amp,
+        resonance,
+        E_ref
+):
+    angle_i = list(window.keys()).index(theta)
+    data = window[theta]
+    energy = data["ke"]
+
+    gamma = resonance["width"]
+    Er = resonance["r energy"]
+    g = resonance["p width ratio"]
+    l = resonance["angular m"]
+
+    denominator = Er - energy - 1j * gamma/2
+    phi = phase(
+        energy,
+        resonance["a"][angle_i],
+        resonance["b"][angle_i],
+        E_ref
+    )
+
+    factor = (
+        1j / (2 * wavenumber(energy)) 
+        * (2*l + 1) * g * np.exp(2j*phi) 
+        * eval_legendre(l, np.cos(np.deg2rad(float(theta))))
+        )
+    
+    partial = (
+        -2 * np.real(conj_amp * factor * (1j / denominator - gamma / (2 * denominator ** 2)) )/data["dsigma"]
+    )
+
+    return partial
+    
+
+
 def get_conjugate_scattering_amp(window, resonances, background_params, E_ref):
     conj_scattering_amplitude = np.array([])
     for i, ((angle, data), (m,c)) in enumerate(zip(window.items(), background_params)):
@@ -570,6 +641,65 @@ def get_conjugate_scattering_amp(window, resonances, background_params, E_ref):
     
     return conj_scattering_amplitude
 
+def get_dr_dg(
+        theta,
+        window, 
+        conj_amp,
+        resonance,
+        E_ref
+):
+    angle_i = list(window.keys()).index(theta)
+    data = window[theta]
+    energy = data["ke"]
+    derivative = 1j/ (2*wavenumber(energy)) * resonance_contribution(
+        theta,
+        resonance["angular m"], 
+        1.0,
+        energy,
+        resonance["width"],
+        resonance["r energy"],
+        resonance["a"][angle_i],
+        resonance["b"][angle_i],
+        E_ref
+    )
+
+    partial = -2 * np.real(
+        conj_amp * derivative 
+    ) / data["dsigma"]
+
+    return partial
+
+def get_dr_da_db(
+        theta,
+        window, 
+        conj_amp,
+        resonance,
+        E_ref
+):
+    angle_i = list(window.keys()).index(theta)
+    data = window[theta]
+    energy = data["ke"]
+
+    amplitude = 1j / (2*wavenumber(energy)) * resonance_contribution(
+        theta,
+        resonance["angular m"],
+        resonance["p width ratio"],
+        energy,
+        resonance["width"],
+        resonance["r energy"],
+        resonance["a"][angle_i],
+        resonance["b"][angle_i],
+        E_ref
+    )
+
+    derivative_wrt_b = 2j * amplitude 
+    derivative_wrt_a = (energy - E_ref) * derivative_wrt_b
+
+    dr_da = -2 * np.real(conj_amp * derivative_wrt_a) / data["dsigma"]
+    dr_db = -2 * np.real(conj_amp * derivative_wrt_b) / data["dsigma"]
+
+    return dr_da, dr_db
+    
 
 
 def get_jacobian(parameters, angular_momenta, window):
@@ -595,6 +725,8 @@ def get_jacobian(parameters, angular_momenta, window):
     # ... (if more resonances)
     # m_1, c_1,..., m_16, c_16 
 
+    #background --------------------
+
     dscattering_dm = get_dscattering_dm(window)
 
     conjugate_scattering_amp = get_conjugate_scattering_amp(
@@ -612,6 +744,7 @@ def get_jacobian(parameters, angular_momenta, window):
         rows = slice(start, end)
         m_col = n_parameters - 32 + 2*i
         c_col = m_col + 1
+        
 
         partials_m = -2 * np.real(
             conjugate_scattering_amp[rows] * dscattering_dm[rows]
@@ -624,21 +757,55 @@ def get_jacobian(parameters, angular_momenta, window):
         jacobian[rows, m_col] = partials_m 
         jacobian[rows, c_col] = partials_c
 
-        start = end
-
         
 
-    return jacobian 
+    # -------------------------------------
+    # resonance energy --------------------
+        for n, resonance in enumerate(resonances_params):
+            E_col = 35 * n
+            jacobian[rows, E_col] = get_dr_dE(
+                angle,
+                window, 
+                conjugate_scattering_amp[rows],
+                resonance,
+                E_ref
+            )
 
-"""
- theta, 
-        energy,
-        resonances,
-        m,
-        c,
-        angle,
-        E_ref
-"""
+            gamma_col = E_col + 1
+            jacobian[rows, gamma_col] = get_dr_dG(
+                angle,
+                window,
+                conjugate_scattering_amp[rows],
+                resonance,
+                E_ref
+            )
+
+            g_col = E_col + 2
+            jacobian[rows, g_col] = get_dr_dg(
+                angle,
+                window,
+                conjugate_scattering_amp[rows],
+                resonance,
+                E_ref
+            )
+
+            a_col = E_col + 3 + 2 * i
+            b_col = a_col + 1
+
+            dr_da, dr_db = get_dr_da_db(
+                angle,
+                window, 
+                conjugate_scattering_amp[rows],
+                resonance,
+                E_ref
+            )
+
+            jacobian[rows, a_col] = dr_da
+            jacobian[rows, b_col] = dr_db
+
+        start = end
+
+    return jacobian 
 
 
 
